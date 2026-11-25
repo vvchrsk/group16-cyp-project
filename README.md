@@ -2,10 +2,6 @@
 
 ## Our Additions and Experiments
 
-In this fork, we extended and ran the experimental pipeline for the Deep Learning project:
-
-# Our Additions and Experiments
-
 In this fork we kept the provided splits (`prepare_data.py`, default seed 42) and the evaluation code unchanged. All choices (hyperparameters, epochs, final configuration) were made on the **validation** set. Test results are only reported for the selected models.
 
 ### What we added
