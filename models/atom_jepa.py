@@ -28,17 +28,27 @@ class AtomJEPAModel(nn.Module):
         self.cfg, self.folder = cfg, data_dir / 'conformers'
         self.encoder = AtomJEPA.from_pretrained(cfg.checkpoint, device=device,
                                                 precision=cfg.precision, cuequivariance=False)
-        self.encoder.set_grad_checkpointing(not cfg.freeze_encoder)
-        self.encoder.requires_grad_(not cfg.freeze_encoder)
+        self.unfreeze_epoch = cfg.get('unfreeze_epoch', None)
+        start_frozen = bool(cfg.freeze_encoder or (self.unfreeze_epoch is not None and self.unfreeze_epoch > 1))
+        self.set_encoder_frozen(start_frozen)
         self.readout = build_readout(readout, self.encoder.embedding_dim, n_targets).to(self.encoder.device)
 
     @property
     def device(self):
         return self.encoder.device
 
+    def set_encoder_frozen(self, frozen: bool):
+        self.encoder_frozen = frozen
+        self.encoder.set_grad_checkpointing(not frozen)
+        self.encoder.requires_grad_(not frozen)
+        if frozen:
+            self.encoder.eval()
+        else:
+            self.encoder.train()
+
     def train(self, mode=True):
         super().train(mode)
-        if self.cfg.freeze_encoder:
+        if getattr(self, 'encoder_frozen', self.cfg.freeze_encoder):
             self.encoder.eval()
         return self
 

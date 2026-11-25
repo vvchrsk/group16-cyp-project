@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""Fine-tune one model (Atom-JEPA or a baseline) for regression OR classification.
 
-Configured with Hydra (conf/), e.g. python finetune.py model=morgan_mlp task=classification"""
 import hashlib
 import importlib.metadata
 import json
@@ -21,14 +19,14 @@ from models.gbm import LightGBMModel
 from prepare_data import REG, CLS
 
 
-def masked_loss(pred, y, task, mean, std):
+def masked_loss(pred, y, task, mean, std, pos_weight=None):
     mask = torch.isfinite(y)
     if not mask.any():
         return None
-    # Index BEFORE applying the loss: multiplying NaN losses by zero is not safe.
     if task == 'regression':
         return nn.functional.mse_loss(pred[mask], ((y - mean) / std)[mask])
-    return nn.functional.binary_cross_entropy_with_logits(pred[mask], y[mask])
+    pw = torch.tensor(float(pos_weight), device=pred.device, dtype=pred.dtype) if pos_weight is not None else None
+    return nn.functional.binary_cross_entropy_with_logits(pred[mask], y[mask], pos_weight=pw)
 
 
 def metrics(frame, predictions, targets, task):
@@ -59,7 +57,6 @@ def metrics(frame, predictions, targets, task):
                               'n': len(y), 'positive_fraction': float(y.mean())}
     primary = 'ST-RAE' if task == 'regression' else 'MCC'
     scores = [result[t][primary] for t in targets]
-    # Do not silently omit an endpoint when reporting a macro score.
     result['macro_' + primary] = (float(np.mean(scores))
         if all(s is not None and np.isfinite(s) for s in scores) else None)
     return result
@@ -80,7 +77,6 @@ def predict(model, loader, task, mean, std):
 
 
 def train_torch(cfg, train, val, targets, task, data, out):
-    """Trains a torch model with the epoch loop; returns a function frame -> predictions."""
     if cfg.train.epochs < 1 or cfg.train.batch_size < 1:
         raise ValueError('epochs and batch_size must be positive')
     model = MODELS[cfg.model.type](cfg.model, cfg.readout, len(targets), data, cfg.device)
@@ -88,7 +84,6 @@ def train_torch(cfg, train, val, targets, task, data, out):
     mean = torch.zeros(len(targets), device=model.device)
     std = torch.ones_like(mean)
     if task == 'regression':
-        # Fit scaling on the training fold ONLY, separately for each observed endpoint.
         mean = torch.tensor(train[targets].mean().to_numpy(), dtype=torch.float32, device=model.device)
         std = torch.tensor(train[targets].std(ddof=0).to_numpy(), dtype=torch.float32,
                            device=model.device).clamp_min(1e-6)
@@ -96,13 +91,17 @@ def train_torch(cfg, train, val, targets, task, data, out):
     train_loader = model.loader(train, targets, batch_size, shuffle=True)
     val_loader = model.loader(val, targets, batch_size)
     optimizer = torch.optim.AdamW(model.param_groups(), weight_decay=cfg.train.weight_decay)
+    pos_weight = cfg.train.get('pos_weight', None) if task == 'classification' else None
     best = float('inf')
     for epoch in range(1, cfg.train.epochs + 1):
+        if hasattr(model, 'unfreeze_epoch') and model.unfreeze_epoch == epoch and not cfg.model.freeze_encoder:
+            model.set_encoder_frozen(False)
+            print(f'Unfroze encoder at epoch {epoch}', flush=True)
         model.train()
         loss_sum, observed = 0., 0
         for batch in train_loader:
             y = batch['y'].to(model.device)
-            loss = masked_loss(model(batch).float(), y, task, mean, std)
+            loss = masked_loss(model(batch).float(), y, task, mean, std, pos_weight=pos_weight)
             if loss is None:
                 continue
             if not torch.isfinite(loss):
@@ -189,7 +188,8 @@ def main(cfg):
     else:
         predict_frame = train_torch(cfg, train, val, targets, task, data, out)
     validation_predictions = predict_frame(val)
-    (out / 'validation_metrics.json').write_text(json.dumps(metrics(val, validation_predictions, targets, task), indent=2))
+    val_scores = metrics(val, validation_predictions, targets, task)
+    (out / 'validation_metrics.json').write_text(json.dumps(val_scores, indent=2))
     vp = val[['SMILES', 'Molecule_Name']].copy()
     vp[targets] = validation_predictions
     vp.to_csv(out / 'validation_predictions.csv', index=False)
@@ -207,6 +207,8 @@ def main(cfg):
     output[targets] = predictions
     output.to_csv(out / 'test_predictions.csv', index=False)
     print(f'Held-out test metrics: {test_scores}')
+    metric_key = 'macro_ST-RAE' if task == 'regression' else 'macro_MCC'
+    return float(val_scores[metric_key])
 
 if __name__ == '__main__':
     main()

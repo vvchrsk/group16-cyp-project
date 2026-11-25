@@ -29,7 +29,23 @@ class MLPReadout(nn.Module):
         return self.mlp(x)
 
 
-READOUTS = {'linear': LinearReadout, 'mlp': MLPReadout}
+
+
+class LayerNormMLPReadout(nn.Module):
+    """Normalized MLP with LayerNorm, GELU, and Dropout for stabilized 3D embedding readout."""
+
+    def __init__(self, in_dim, n_targets, hidden_dim=256, num_layers=2, dropout=0.25):
+        super().__init__()
+        dims = [in_dim] + [hidden_dim] * (num_layers - 1)
+        layers = [nn.LayerNorm(in_dim)]
+        for a, b in zip(dims[:-1], dims[1:]):
+            layers += [nn.Linear(a, b), nn.LayerNorm(b), nn.GELU(), nn.Dropout(dropout)]
+        self.mlp = nn.Sequential(*layers, nn.Linear(dims[-1], n_targets))
+
+    def forward(self, x):
+        return self.mlp(x)
+
+READOUTS = {'linear': LinearReadout, 'mlp': MLPReadout, 'mlp_norm': LayerNormMLPReadout}
 
 
 def build_readout(cfg, in_dim, n_targets):

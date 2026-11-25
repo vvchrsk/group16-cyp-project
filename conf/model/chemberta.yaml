@@ -1,0 +1,19 @@
+# @package _global_
+# Pretrained ChemBERTa-2 (DeepChem/ChemBERTa-77M-MTR) SMILES Transformer + readout head.
+defaults:
+  - override /readout: mlp_norm
+
+model:
+  name: chemberta
+  type: chemberta
+  checkpoint: DeepChem/ChemBERTa-77M-MTR
+  max_length: 256
+  freeze_encoder: false
+  encoder_lr: 3.0e-5
+  readout_lr: 1.0e-3
+
+train:
+  epochs: 20
+  batch_size: 32
+  weight_decay: 1.0e-4
+  grad_clip: 1.0

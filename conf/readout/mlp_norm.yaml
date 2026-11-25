@@ -1,0 +1,5 @@
+# Normalized compact MLP readout.
+type: mlp_norm
+hidden_dim: 256
+num_layers: 2
+dropout: 0.25
