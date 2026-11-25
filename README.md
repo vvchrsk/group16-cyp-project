@@ -1,3 +1,34 @@
+> **Note:** This repository is a fork of the original course project repository for Predicting CYP Inhibition with Molecular Foundation Models. The original README is preserved below for reference.
+
+## Our Additions and Experiments
+
+In this fork, we extended and ran the experimental pipeline for the Deep Learning project:
+
+# Our Additions and Experiments
+
+In this fork we kept the provided splits (`prepare_data.py`, default seed 42) and the evaluation code unchanged. All choices (hyperparameters, epochs, final configuration) were made on the **validation** set. Test results are only reported for the selected models.
+
+### What we added
+
+| Part | Addition | Where |
+|---|---|---|
+| 2 – Baseline | LightGBM tuning with Optuna. `finetune.py` now returns the validation metric (`macro_ST-RAE` or `macro_MCC`) so that Optuna can optimise it. | `finetune.py` |
+| 3 – Atom-JEPA | **`mlp_norm` readout**: LayerNorm + 2-layer GELU MLP with dropout 0.25 | `models/readouts.py`, `conf/readout/mlp_norm.yaml` |
+| 3 – Atom-JEPA | **Gradual unfreezing**: encoder frozen for the first epochs, then unfrozen (`+model.unfreeze_epoch=N`) | `models/atom_jepa.py`, `finetune.py` |
+| 3 – Atom-JEPA | **Positive-class weighting** for the imbalanced TDI classification (`+train.pos_weight=3.0`) | `finetune.py` |
+| 4 – Second model | **ChemBERTa-2** (`DeepChem/ChemBERTa-77M-MTR`), a SMILES transformer, with mean pooling over tokens and the same readouts. Frozen and fine-tuned variants. | `models/chemberta.py`, `conf/model/chemberta.yaml` |
+
+Extra dependencies: `optuna`, `hydra-optuna-sweeper`, `six`, `transformers`.
+
+### Experiments
+
+- **LightGBM (Optuna):** trials for regression (minimise `macro_ST-RAE`) and for classification (maximise `macro_MCC`). Searched: learning rate, number of leaves, min child samples, column subsampling, L1/L2 regularisation and `scale_pos_weight`. The sweeps were run on the HPC and on a local machine; the selected configurations were re-run on the HPC.
+- **Atom-JEPA:** frozen vs. fully fine-tuned encoder, gradual unfreezing, readout (`mlp`, `linear`, `mlp_norm`) and positive-class weighting.
+- **ChemBERTa-2:** frozen vs. fine-tuned encoder with two encoder learning rates.
+- **Controlled comparisons and seeds:** the extra runs change one factor at a time (same epochs, same learning rate) and are repeated with training seeds 1, 2 and 3. The seed only changes the training randomness (weight initialisation and batch order). The train/val/test split stays the same, because it is fixed in `data/` by `prepare_data.py` with seed 42. 
+
+---
+
 # CYP Inhibition 🧬 - Starter code
 
 **[Leaderboard](https://khelverskovp.github.io/dtu-cyp-leaderboard/)** · [Atom-JEPA](https://github.com/khelverskovp/atom-jepa) · [Dataset](https://huggingface.co/datasets/openadmet/cyp-challenge-train-test)
