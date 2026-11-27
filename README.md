@@ -23,6 +23,8 @@ Extra dependencies: `optuna`, `hydra-optuna-sweeper`, `six`, `transformers`.
 - **ChemBERTa-2:** frozen vs. fine-tuned encoder with two encoder learning rates.
 - **Controlled comparisons and seeds:** the extra runs change one factor at a time (same epochs, same learning rate) and are repeated with training seeds 1, 2 and 3. The seed only changes the training randomness (weight initialisation and batch order). The train/val/test split stays the same, because it is fixed in `data/` by `prepare_data.py` with seed 42. 
 
+### Files with results in the outputs/ folder
+
 ---
 
 # CYP Inhibition 🧬 - Starter code
